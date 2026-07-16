@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Spin a Presentation Topic!</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎡</text></svg>" />
+</head>
+<body>
+  <div class="stars" aria-hidden="true"></div>
+
+  <main class="app">
+    <header class="hero">
+      <h1>🎡 Topic Spinner</h1>
+      <p class="tagline">Spin the wheel to find your next presentation topic!</p>
+    </header>
+
+    <!-- Step 1: who is presenting -->
+    <section class="panel" aria-label="Choose who is presenting">
+      <h2 class="step-label"><span class="num">1</span> Who's presenting?</h2>
+      <div id="kid-buttons" class="kid-buttons" role="group" aria-label="Choose presenter"></div>
+    </section>
+
+    <!-- Step 2: subject filter -->
+    <section class="panel" aria-label="Choose a subject">
+      <h2 class="step-label"><span class="num">2</span> Pick a subject <span class="optional">(or leave on Surprise Me!)</span></h2>
+      <div id="subject-chips" class="subject-chips" role="group" aria-label="Choose subject"></div>
+    </section>
+
+    <!-- Step 3: spin -->
+    <section class="spin-zone">
+      <div id="reel" class="reel" aria-live="polite">
+        <div class="reel-window">
+          <span id="reel-text" class="reel-text">Ready when you are!</span>
+        </div>
+      </div>
+      <button id="spin-btn" class="spin-btn" type="button">SPIN! 🎯</button>
+      <p id="match-count" class="match-count"></p>
+    </section>
+
+    <!-- Result card -->
+    <section id="result" class="result hidden" aria-live="polite"></section>
+
+    <footer class="footer">
+      <p>
+        Topics from the
+        <a href="https://github.com/withmarbleapp/os-taxonomy" target="_blank" rel="noopener">Marble Open Taxonomy</a>,
+        used under the <a href="https://opendatacommons.org/licenses/odbl/" target="_blank" rel="noopener">ODbL</a>.
+      </p>
+    </footer>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
