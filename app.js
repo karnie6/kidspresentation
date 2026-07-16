@@ -9,8 +9,8 @@
    (topics list ages 4–13). Add or remove entries as needed.
    ------------------------------------------------------------------------- */
 const KIDS = [
-  { name: "Age 5", age: 5, emoji: "🐣" },
-  { name: "Age 8", age: 8, emoji: "🚀" },
+  { name: "Camae", age: 5, emoji: "🐣" },
+  { name: "Cyree", age: 8, emoji: "🚀" },
 ];
 
 /* ------------------------------------------------------------------------- */
