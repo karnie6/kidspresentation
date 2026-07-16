@@ -1,6 +1,6 @@
 /* =========================================================================
    Topic Spinner — pick a random presentation topic for the kids.
-   Data: Marble Open Taxonomy (topics.json), used under ODbL.
+   Data: Marble Open Taxonomy (topics.json + clusters.json), used under ODbL.
    ========================================================================= */
 
 /* -------------------------------------------------------------------------
@@ -13,14 +13,20 @@ const KIDS = [
   { name: "Cyree", age: 8, emoji: "🚀" },
 ];
 
+// "Fun picks" quick filter — the naturally presentable subjects.
+const FUN_SUBJECTS = ["Science", "History", "Computing"];
+const FUN = "__FUN__";
+
 /* ------------------------------------------------------------------------- */
 
 const state = {
   topics: [],
+  clusterMap: {},     // "subject|domain" -> [cluster summaries]
   kid: null,          // selected kid object
-  subject: null,      // null = all subjects ("Surprise Me!")
+  subject: null,      // null = all; a subject string; or FUN
   spinning: false,
   lastId: null,       // avoid immediately repeating the same topic
+  lastDomain: null,   // avoid immediately repeating the same domain
 };
 
 const el = {
@@ -36,9 +42,15 @@ const el = {
 /* ---- Load data ---- */
 async function init() {
   try {
-    const res = await fetch("data/topics.json");
-    const data = await res.json();
-    state.topics = Array.isArray(data) ? data : data.topics || [];
+    const [topicsRes, clustersRes] = await Promise.all([
+      fetch("data/topics.json"),
+      fetch("data/clusters.json"),
+    ]);
+    const topicsData = await topicsRes.json();
+    state.topics = Array.isArray(topicsData) ? topicsData : topicsData.topics || [];
+    const clustersData = await clustersRes.json();
+    const clusters = Array.isArray(clustersData) ? clustersData : clustersData.clusters || [];
+    state.clusterMap = buildClusterMap(clusters);
   } catch (e) {
     el.reelText.textContent = "Couldn't load topics 😢";
     console.error(e);
@@ -47,6 +59,15 @@ async function init() {
   renderKidButtons();
   renderSubjectChips();
   updateMatchCount();
+}
+
+function buildClusterMap(clusters) {
+  const map = {};
+  clusters.forEach((c) => {
+    const key = `${c.subject}|${c.domain}`;
+    (map[key] = map[key] || []).push(c);
+  });
+  return map;
 }
 
 /* ---- Presenter buttons ---- */
@@ -84,9 +105,8 @@ function renderSubjectChips() {
   const subjects = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
 
   el.subjectChips.innerHTML = "";
-
-  // "Surprise Me!" = all subjects
   addChip("✨ Surprise Me!", null, true);
+  addChip("🔬 Fun picks", FUN, false);
   subjects.forEach((s) => addChip(s, s, false, counts[s]));
 }
 
@@ -111,25 +131,70 @@ function selectSubject(value, chip) {
 }
 
 /* ---- Filtering ---- */
+function subjectMatches(t) {
+  if (!state.subject) return true;
+  if (state.subject === FUN) return FUN_SUBJECTS.includes(t.subject);
+  return t.subject === state.subject;
+}
+
 function matchingTopics() {
   if (!state.kid) return [];
   const age = state.kid.age;
   return state.topics.filter((t) => {
     const start = t.ageRangeStart, end = t.ageRangeEnd;
     const ageOk = start != null && end != null && age >= start && age <= end;
-    const subjOk = !state.subject || t.subject === state.subject;
-    return ageOk && subjOk;
+    return ageOk && subjectMatches(t);
   });
+}
+
+function subjectLabel() {
+  if (!state.subject) return "";
+  if (state.subject === FUN) return " in fun subjects";
+  return ` in ${state.subject}`;
 }
 
 function updateMatchCount() {
   const n = matchingTopics().length;
   const who = state.kid ? state.kid.name : "someone";
-  const where = state.subject ? ` in ${state.subject}` : "";
   el.matchCount.textContent = n
-    ? `${n} topic${n === 1 ? "" : "s"} ready for ${who}${where}.`
+    ? `${n} topic${n === 1 ? "" : "s"} ready for ${who}${subjectLabel()}.`
     : `No topics match yet — try another subject.`;
   el.spinBtn.disabled = n === 0 || state.spinning;
+}
+
+/* ---- Choosing a winner ----
+   Weight away from the most "foundational" topics (high centrality =
+   rote basics like counting/handwriting) so spins land on richer,
+   more presentable topics. Also avoid repeating the last topic/domain. */
+function weightFor(t) {
+  const c = typeof t.centrality === "number" ? t.centrality : 0;
+  const w = Math.pow(1 - Math.min(c, 0.999), 2);
+  return w > 0 ? w : 0.001;
+}
+
+function weightedPick(pool) {
+  const total = pool.reduce((s, t) => s + weightFor(t), 0);
+  let r = Math.random() * total;
+  for (const t of pool) {
+    r -= weightFor(t);
+    if (r <= 0) return t;
+  }
+  return pool[pool.length - 1];
+}
+
+function chooseWinner(pool) {
+  let candidates = pool;
+  // prefer a different domain than last spin, if we can
+  if (state.lastDomain) {
+    const diff = candidates.filter((t) => (t.domain || "") !== state.lastDomain);
+    if (diff.length) candidates = diff;
+  }
+  // never repeat the exact same topic back-to-back if avoidable
+  if (candidates.length > 1 && state.lastId) {
+    const diff = candidates.filter((t) => t.id !== state.lastId);
+    if (diff.length) candidates = diff;
+  }
+  return weightedPick(candidates);
 }
 
 /* ---- Spin! ---- */
@@ -138,12 +203,9 @@ function spin() {
   const pool = matchingTopics();
   if (!pool.length) return;
 
-  // pick winner, avoiding an immediate repeat when possible
-  let winner = pool[Math.floor(Math.random() * pool.length)];
-  if (pool.length > 1 && winner.id === state.lastId) {
-    winner = pool[(pool.indexOf(winner) + 1) % pool.length];
-  }
+  const winner = chooseWinner(pool);
   state.lastId = winner.id;
+  state.lastDomain = winner.domain || null;
 
   state.spinning = true;
   el.spinBtn.disabled = true;
@@ -161,8 +223,7 @@ function spin() {
     el.reelText.textContent = topicTitle(random);
 
     const elapsed = Date.now() - startTime;
-    // slow down as time passes
-    delay *= 1.11;
+    delay *= 1.11; // slow down as time passes
 
     if (elapsed >= minSpinMs && delay > 220) {
       land(winner);
@@ -183,11 +244,35 @@ function land(winner) {
 }
 
 /* ---- Result card ---- */
+function domainBlurb(t) {
+  const list = state.clusterMap[`${t.subject}|${t.domain}`];
+  if (!list || !list.length) return null;
+  const age = state.kid ? state.kid.age : 99;
+  // pick the summary whose ageRangeStart is the closest one at/below the kid's age
+  let best = null;
+  list.forEach((c) => {
+    const s = c.ageRangeStart != null ? c.ageRangeStart : 0;
+    if (s <= age && (!best || s > best.ageRangeStart)) best = c;
+  });
+  if (!best) {
+    best = list.reduce((a, b) =>
+      (a.ageRangeStart != null ? a.ageRangeStart : 99) <
+      (b.ageRangeStart != null ? b.ageRangeStart : 99) ? a : b
+    );
+  }
+  return best ? best.summary : null;
+}
+
 function renderResult(t) {
   const evidence = Array.isArray(t.evidence) ? t.evidence.filter(Boolean) : [];
   const badges =
     `<span class="badge subject">${escapeHtml(t.subject || "Topic")}</span>` +
     (t.domain ? `<span class="badge">${escapeHtml(t.domain)}</span>` : "");
+
+  const blurb = domainBlurb(t);
+  const blurbHtml = blurb
+    ? `<p class="blurb">💡 ${escapeHtml(blurb)}</p>`
+    : "";
 
   let checklist = "";
   if (evidence.length) {
@@ -210,6 +295,7 @@ function renderResult(t) {
     `<div class="badges">${badges}</div>` +
     `<h3>${escapeHtml(topicTitle(t))}</h3>` +
     `<p class="desc">${escapeHtml(t.description || "")}</p>` +
+    blurbHtml +
     checklist +
     tip +
     `<button class="again-btn" type="button">🎡 Spin again</button>`;
@@ -227,7 +313,6 @@ function renderResult(t) {
 /* ---- Helpers ---- */
 function topicTitle(t) {
   if (t.name) return t.name;
-  // fall back to a trimmed description if a topic has no name
   const d = t.description || "Mystery Topic";
   return d.length > 60 ? d.slice(0, 57) + "…" : d;
 }
